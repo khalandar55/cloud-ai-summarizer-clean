@@ -11,7 +11,7 @@ function App() {
     },
   ]);
   const [prompt, setPrompt] = useState("");
-  const [documentText, setDocumentText] = useState(""); // uploaded or active document
+  const [documentText, setDocumentText] = useState(""); // uploaded text
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -24,33 +24,36 @@ function App() {
   const sendPrompt = async () => {
     if (!prompt.trim() || isLoading) return;
 
-    const isDocQuery = /summarize|analyze|what/i.test(prompt);
+    const textBlock = prompt.trim();
+    const isPastedText = textBlock.length > 200 || textBlock.split(" ").length > 30;
+    const isDocQuery = /summarize|analyze|what|explain/i.test(textBlock);
 
-    // 🛑 If it's a doc-related query but no text was uploaded or typed
-    if (isDocQuery && !documentText && prompt.trim().length < 10) {
+    if (isDocQuery && !isPastedText && !documentText) {
       setChat((prev) => [
         ...prev,
-        { sender: "bot", text: "❌ No document uploaded or text provided to summarize. Please upload a file or paste text." },
+        {
+          sender: "bot",
+          text:
+            "❌ No document uploaded or pasted. Please upload a file or paste the content directly.",
+        },
       ]);
       return;
     }
 
-    // Send user prompt to chat
-    setChat((prev) => [...prev, { sender: "user", text: prompt }]);
+    setChat((prev) => [...prev, { sender: "user", text: textBlock }]);
     setPrompt("");
     setIsLoading(true);
 
     try {
       const res = await axios.post("/ask", {
         prompt,
-        text: documentText || prompt,
+        text: documentText,  // only send uploaded or pasted document
       });
 
       setChat((prev) => [...prev, { sender: "bot", text: res.data.response }]);
 
-      // ✅ Clear the upload flag if document was used
-      if (documentText && isDocQuery) {
-        setUploadSuccess(false); // ✅ Hide “Document uploaded” after it's used
+      if (uploadSuccess && isDocQuery && !isPastedText) {
+        setUploadSuccess(false);
       }
     } catch (err) {
       setChat((prev) => [
@@ -64,7 +67,7 @@ function App() {
 
   const uploadText = async (text) => {
     setDocumentText(text);
-    setUploadSuccess(false); // reset before upload
+    setUploadSuccess(false);
 
     try {
       await axios.post("/upload", { text });
@@ -105,7 +108,6 @@ function App() {
 
         {/* Upload + Input */}
         <div className="p-4 bg-gray-50 border-t flex flex-col gap-2">
-          {/* Upload Button */}
           <div className="flex items-center gap-2">
             <label className="inline-flex items-center bg-gray-100 px-3 py-1 rounded text-sm text-gray-800 cursor-pointer hover:bg-gray-200">
               📄 Upload Document
@@ -114,7 +116,6 @@ function App() {
                 accept=".txt"
                 className="hidden"
                 onClick={(e) => {
-                  // ✅ allow same file re-upload
                   e.target.value = null;
                 }}
                 onChange={(e) => {

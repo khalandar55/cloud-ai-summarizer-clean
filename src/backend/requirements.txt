@@ -1,6 +1,9 @@
-flask
-flask-cors
-transformers
-torch
-accelerate
-transformers==4.41.1
+flask==3.0.3
+flask-cors==4.0.1
+transformers==4.52.4
+torch==2.7.1
+numpy==2.0.2
+tokenizers==0.21.2
+requests==2.32.3
+tqdm==4.67.1
+PyYAML==6.0.2
