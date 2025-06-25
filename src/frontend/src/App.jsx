@@ -11,46 +11,65 @@ function App() {
     },
   ]);
   const [prompt, setPrompt] = useState("");
-  const [documentText, setDocumentText] = useState(""); // ✅ store uploaded or pasted document
+  const [documentText, setDocumentText] = useState(""); // uploaded or active document
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
 
-  // Sends user prompt and document context to backend
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") sendPrompt();
+  };
+
   const sendPrompt = async () => {
-    if (!prompt.trim()) return;
-  
+    if (!prompt.trim() || isLoading) return;
+
+    const isDocQuery = /summarize|analyze|what/i.test(prompt);
+
+    // 🛑 If it's a doc-related query but no text was uploaded or typed
+    if (isDocQuery && !documentText && prompt.trim().length < 10) {
+      setChat((prev) => [
+        ...prev,
+        { sender: "bot", text: "❌ No document uploaded or text provided to summarize. Please upload a file or paste text." },
+      ]);
+      return;
+    }
+
+    // Send user prompt to chat
     setChat((prev) => [...prev, { sender: "user", text: prompt }]);
     setPrompt("");
-  
+    setIsLoading(true);
+
     try {
-      const res = await axios.post("http://localhost:5001/ask", {
+      const res = await axios.post("/ask", {
         prompt,
-        text: documentText || prompt, // 👈 use prompt as fallback context if no document
+        text: documentText || prompt,
       });
-  
+
       setChat((prev) => [...prev, { sender: "bot", text: res.data.response }]);
+
+      // ✅ Clear the upload flag if document was used
+      if (documentText && isDocQuery) {
+        setUploadSuccess(false); // ✅ Hide “Document uploaded” after it's used
+      }
     } catch (err) {
       setChat((prev) => [
         ...prev,
         { sender: "bot", text: "❌ Error: " + err.message },
       ]);
     }
-  };
-  
 
-  const handleKeyDown = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendPrompt();
-    }
+    setIsLoading(false);
   };
 
-  // Handle text upload from file
   const uploadText = async (text) => {
-    setDocumentText(text); // ✅ store for follow-up Qs
+    setDocumentText(text);
+    setUploadSuccess(false); // reset before upload
 
     try {
-      await axios.post("http://localhost:5001/upload", { text });
+      await axios.post("/upload", { text });
+      setUploadSuccess(true);
+
       setChat((prev) => [
         ...prev,
         {
@@ -60,6 +79,7 @@ function App() {
       ]);
     } catch (err) {
       setError("❌ Upload failed: " + err.message);
+      setUploadSuccess(false);
     }
   };
 
@@ -78,18 +98,25 @@ function App() {
         <div className="p-4 flex-1 overflow-y-auto">
           <ApiKeyModal apiKey={apiKey} setApiKey={setApiKey} />
           <ChatWindow chat={chat} />
+          {isLoading && (
+            <div className="text-sm text-gray-500 mt-2">🤖 Thinking...</div>
+          )}
         </div>
 
         {/* Upload + Input */}
         <div className="p-4 bg-gray-50 border-t flex flex-col gap-2">
           {/* Upload Button */}
-          <div className="flex justify-start">
+          <div className="flex items-center gap-2">
             <label className="inline-flex items-center bg-gray-100 px-3 py-1 rounded text-sm text-gray-800 cursor-pointer hover:bg-gray-200">
               📄 Upload Document
               <input
                 type="file"
                 accept=".txt"
                 className="hidden"
+                onClick={(e) => {
+                  // ✅ allow same file re-upload
+                  e.target.value = null;
+                }}
                 onChange={(e) => {
                   const file = e.target.files[0];
                   if (file && file.type === "text/plain") {
@@ -103,6 +130,12 @@ function App() {
                 }}
               />
             </label>
+
+            {uploadSuccess && (
+              <span className="text-green-600 text-sm font-medium">
+                ✅ Document uploaded!
+              </span>
+            )}
           </div>
 
           {/* Prompt Input */}
@@ -113,13 +146,19 @@ function App() {
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={handleKeyDown}
               className="flex-1 border px-4 py-2 rounded shadow-sm"
-              placeholder="Type your message or paste text here..."
+              placeholder="Ask a question like 'What is dropout in deep learning?'"
+              disabled={isLoading}
             />
             <button
               onClick={sendPrompt}
-              className="bg-blue-500 text-white px-4 rounded shadow hover:bg-blue-600"
+              disabled={isLoading}
+              className={`px-4 rounded shadow ${
+                isLoading
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-blue-500 hover:bg-blue-600 text-white"
+              }`}
             >
-              Send 🚀
+              {isLoading ? "Sending..." : "Send 🚀"}
             </button>
           </div>
         </div>
